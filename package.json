@@ -1,0 +1,106 @@
+{
+  "name": "provider-directory-desktop",
+  "version": "1.0.0",
+  "description": "Provider Network Finder - Search healthcare providers by NPI across multiple insurance directories",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build:mac": "electron-builder --mac",
+    "build:win": "electron-builder --win",
+    "build:both": "electron-builder --mac --win",
+    "publish:mac": "electron-builder --mac --publish always",
+    "publish:win": "electron-builder --win --publish always",
+    "publish:both": "electron-builder --mac --win --publish always",
+    "postinstall": "playwright install chromium"
+  },
+  "keywords": [
+    "healthcare",
+    "provider",
+    "directory",
+    "NPI",
+    "insurance"
+  ],
+  "author": "Robert Galloway",
+  "license": "ISC",
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Elemental-Care/DirectoryFinder.git"
+  },
+  "build": {
+    "publish": {
+      "provider": "github",
+      "owner": "Elemental-Care",
+      "repo": "DirectoryFinder"
+    },
+    "appId": "com.provider.directory.search",
+    "productName": "Provider Directory Finder",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "app/**/*",
+      "main.js",
+      "preload.js",
+      "config.js",
+      "scripts/**/*",
+      "package.json",
+      "node_modules/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/playwright/**/*"
+    ],
+    "asar": true,
+    "mac": {
+      "target": {
+        "target": "dmg",
+        "arch": [
+          "x64",
+          "arm64"
+        ]
+      },
+      "category": "public.app-category.productivity",
+      "icon": "build/icon.icns",
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "identity": null,
+      "type": "distribution",
+      "notarize": false
+    },
+    "win": {
+      "target": {
+        "target": "nsis",
+        "arch": [
+          "x64"
+        ]
+      },
+      "icon": "build/icon.ico",
+      "signtoolOptions": {
+        "signingHashAlgorithms": [
+          "sha256"
+        ]
+      }
+    },
+    "linux": {
+      "target": "AppImage",
+      "category": "Utility"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    }
+  },
+  "devDependencies": {
+    "electron": "^38.4.0",
+    "electron-builder": "^26.0.12"
+  },
+  "dependencies": {
+    "electron-updater": "^6.6.2",
+    "playwright": "^1.56.1"
+  }
+}
