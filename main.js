@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 const http = require('http');
 const { autoUpdater } = require('electron-updater');
+const { ensurePlaywrightBrowsers } = require('./install-playwright');
 const { searchIllinoisMedicaid } = require('./scripts/il-medicaid-search');
 const { searchIllinoisMeridian } = require('./scripts/il-meridian-search');
 const { searchWellcareProvider } = require('./scripts/wellcare-search');
@@ -460,7 +461,10 @@ ipcMain.handle('countycare-search', async (event, { npi, location }) => {
     }
 });
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+    // Ensure Playwright browsers are installed on first run
+    await ensurePlaywrightBrowsers();
+
     createWindow();
     setupAutoUpdater();
 
