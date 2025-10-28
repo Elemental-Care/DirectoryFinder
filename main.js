@@ -246,7 +246,29 @@ function setupAutoUpdater() {
         }).then((result) => {
             if (result.response === 0) {
                 console.log('[AUTO-UPDATE] User chose to download update');
-                autoUpdater.downloadUpdate();
+                console.log('[AUTO-UPDATE] Starting download...');
+
+                // Show downloading notification
+                dialog.showMessageBox({
+                    type: 'info',
+                    title: 'Downloading Update',
+                    message: 'Update is downloading...',
+                    detail: 'Please wait. You will be notified when the download is complete.',
+                    buttons: ['OK']
+                });
+
+                autoUpdater.downloadUpdate().then(() => {
+                    console.log('[AUTO-UPDATE] Download initiated successfully');
+                }).catch((err) => {
+                    console.error('[AUTO-UPDATE] Download failed:', err);
+                    dialog.showMessageBox({
+                        type: 'error',
+                        title: 'Download Failed',
+                        message: 'Failed to download update',
+                        detail: err.message,
+                        buttons: ['OK']
+                    });
+                });
             } else {
                 console.log('[AUTO-UPDATE] User chose to download later');
             }
@@ -255,7 +277,8 @@ function setupAutoUpdater() {
 
     // Event: Update downloaded
     autoUpdater.on('update-downloaded', (info) => {
-        console.log('[AUTO-UPDATE] Update downloaded:', info.version);
+        console.log('[AUTO-UPDATE] Update downloaded successfully:', info.version);
+        console.log('[AUTO-UPDATE] Downloaded files:', JSON.stringify(info.files, null, 2));
         dialog.showMessageBox({
             type: 'info',
             title: 'Update Ready',
@@ -267,16 +290,33 @@ function setupAutoUpdater() {
         }).then((result) => {
             if (result.response === 0) {
                 console.log('[AUTO-UPDATE] User chose to restart now');
-                autoUpdater.quitAndInstall(false, true);
+                setImmediate(() => autoUpdater.quitAndInstall(false, true));
             } else {
                 console.log('[AUTO-UPDATE] User chose to restart later');
             }
         });
     });
 
+    // Event: Before quit for update
+    autoUpdater.on('before-quit-for-update', () => {
+        console.log('[AUTO-UPDATE] App is quitting to install update');
+    });
+
     // Event: Download progress
     autoUpdater.on('download-progress', (progressObj) => {
-        console.log(`[AUTO-UPDATE] Download progress: ${progressObj.percent.toFixed(2)}%`);
+        const percent = progressObj.percent.toFixed(2);
+        const downloaded = (progressObj.transferred / 1024 / 1024).toFixed(2);
+        const total = (progressObj.total / 1024 / 1024).toFixed(2);
+        console.log(`[AUTO-UPDATE] Download progress: ${percent}% (${downloaded}MB / ${total}MB)`);
+
+        // Send progress to renderer if window exists
+        if (mainWindow && !mainWindow.isDestroyed()) {
+            mainWindow.webContents.send('update-download-progress', {
+                percent: progressObj.percent,
+                transferred: progressObj.transferred,
+                total: progressObj.total
+            });
+        }
     });
 
     // Event: Update not available
