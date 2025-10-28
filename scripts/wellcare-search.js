@@ -8,7 +8,7 @@ const PLAN_CONFIG = {
   medicaid: 'medicaid'
 };
 
-const DEFAULT_LOCATION = 'Crest Hill, IL 60403';
+const DEFAULT_LOCATION = '60403-1201';
 
 function formatPhone(text) {
   if (!text) return null;

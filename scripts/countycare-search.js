@@ -47,7 +47,7 @@ async function searchCountyCareProvider(npi, options = {}) {
     headless = true,
     slowMo = 0,
     timeout = 60000,
-    location = 'Crest Hill, IL 60403'
+    location = '60403-1201'
   } = options;
 
   const result = {
@@ -407,7 +407,7 @@ async function main() {
   const options = {
     headless: !process.env.PLAYWRIGHT_HEADFUL,
     slowMo: process.env.PLAYWRIGHT_SLOWMO ? parseInt(process.env.PLAYWRIGHT_SLOWMO, 10) : 0,
-    location: locationArg || 'Crest Hill, IL 60403'
+    location: locationArg || '60403-1201'
   };
 
   const result = await searchCountyCareProvider(npiArg.trim(), options);

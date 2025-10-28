@@ -1036,6 +1036,25 @@
                     />
                 </div>
                 <div class="field-block" data-mode="npi">
+                    <label for="searchLocationInput">Search Location</label>
+                    <input
+                        type="text"
+                        id="searchLocationInput"
+                        placeholder="60403-1201"
+                        value="60403-1201"
+                    />
+                    <label style="display: flex; align-items: center; font-weight: normal; cursor: pointer; margin-top: 8px;">
+                        <input
+                            type="checkbox"
+                            id="useNppesLocationCheck"
+                            style="margin-right: 8px;"
+                            onchange="handleLocationCheckboxChange()"
+                        />
+                        <span style="font-size: 14px;">Use provider's NPPES location</span>
+                    </label>
+                    <small style="color: #666; display: block; margin-top: 4px;" id="locationHint">Default: Crest Hill, IL (Will County)</small>
+                </div>
+                <div class="field-block" data-mode="npi">
                     <label>&nbsp;</label>
                     <button type="button" onclick="loadTestNPI()" style="background: #28a745;">Try Example</button>
                 </div>
@@ -2327,6 +2346,62 @@
             });
         }
 
+        // Handle location checkbox change
+        async function handleLocationCheckboxChange() {
+            const checkbox = document.getElementById('useNppesLocationCheck');
+            const locationInput = document.getElementById('searchLocationInput');
+            const locationHint = document.getElementById('locationHint');
+            const npiInput = document.getElementById('npiInput');
+
+            if (checkbox.checked) {
+                const npi = npiInput.value.trim();
+                if (!isValidNPI(npi)) {
+                    checkbox.checked = false;
+                    alert('Please enter a valid 10-digit NPI first.');
+                    return;
+                }
+
+                // Fetch provider location from NPPES
+                locationHint.textContent = 'Fetching provider location from NPPES...';
+                locationInput.disabled = true;
+
+                try {
+                    const response = await fetch(`https://npiregistry.cms.hhs.gov/api/?number=${npi}&version=2.1`);
+                    const data = await response.json();
+
+                    if (data.result_count > 0 && data.results[0].addresses) {
+                        const addresses = data.results[0].addresses;
+                        // Prefer practice location over mailing address
+                        const practiceAddr = addresses.find(a => a.address_purpose === 'LOCATION') || addresses[0];
+
+                        if (practiceAddr) {
+                            const city = practiceAddr.city || '';
+                            const state = practiceAddr.state || '';
+                            const postal = practiceAddr.postal_code || '';
+                            const location = `${city}, ${state} ${postal}`.trim();
+                            locationInput.value = location;
+                            locationHint.textContent = `Using NPPES location: ${location}`;
+                        } else {
+                            throw new Error('No address found in NPPES data');
+                        }
+                    } else {
+                        throw new Error('Provider not found in NPPES');
+                    }
+                } catch (error) {
+                    console.error('Failed to fetch NPPES location:', error);
+                    locationHint.textContent = 'Failed to fetch NPPES location. Using default.';
+                    locationInput.value = '60403-1201';
+                    checkbox.checked = false;
+                    locationInput.disabled = false;
+                }
+            } else {
+                // Reset to default
+                locationInput.value = '60403-1201';
+                locationInput.disabled = false;
+                locationHint.textContent = 'Default: Crest Hill, IL (Will County)';
+            }
+        }
+
         // Load test NPI example
         function loadTestNPI() {
             const modeSelect = document.getElementById('searchMode');
@@ -3119,20 +3194,14 @@
         }
 
         function determineMeridianLocation(providerData) {
-            if (!providerData) return 'Crest Hill, IL 60403';
-
-            const addr = providerData.address;
-            if (!addr) return 'Crest Hill, IL 60403';
-
-            const parts = [];
-            if (addr.city) parts.push(addr.city);
-            if (addr.state) parts.push(addr.state);
-            if (addr.postalCode) {
-                const zip = String(addr.postalCode).slice(0, 5);
-                parts.push(zip);
+            // Use the location from the search input field
+            const locationInput = document.getElementById('searchLocationInput');
+            if (locationInput && locationInput.value.trim()) {
+                return locationInput.value.trim();
             }
 
-            return parts.length >= 2 ? parts.join(', ') : 'Crest Hill, IL 60403';
+            // Fallback to default
+            return '60403-1201';
         }
 
         function buildMeridianResult(response, payerName) {
@@ -4986,7 +5055,8 @@
             if (hasCignaBridge) {
                 try {
                     console.log('Calling Cigna Playwright automation...');
-                    const response = await window.providerDesktop.searchCigna({ npi });
+                    const location = determineMeridianLocation(providerData);
+                    const response = await window.providerDesktop.searchCigna({ npi, location });
 
                     if (response?.ok && response?.data?.success && response?.data?.providers?.length > 0) {
                         // Convert Playwright results to UI format
@@ -5285,7 +5355,8 @@
 
             try {
                 console.log('Calling County Care Playwright automation...');
-                const response = await window.providerDesktop.searchCountyCare({ npi });
+                const location = determineMeridianLocation(providerData);
+                const response = await window.providerDesktop.searchCountyCare({ npi, location });
 
                 if (response?.ok && response?.data?.success && response?.data?.providers?.length > 0) {
                     // Convert Playwright results to UI format
