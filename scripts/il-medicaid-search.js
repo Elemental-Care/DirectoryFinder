@@ -42,14 +42,17 @@ async function searchIllinoisMedicaid(npi, options = {}) {
 
   try {
     const startTime = Date.now();
-    await page.goto(searchUrl, { waitUntil: 'networkidle', timeout });
+    await page.goto(searchUrl, { waitUntil: 'domcontentloaded', timeout });
+
+    // Wait for the page to be fully loaded and the form to be ready
+    await page.waitForSelector('#NPI', { timeout });
+    await page.waitForSelector('#btnSearch', { timeout });
 
     await page.fill('#NPI', npi);
 
-    await Promise.all([
-      page.click('#btnSearch'),
-      page.waitForSelector('.e-grid', { timeout })
-    ]);
+    // Click search and wait for the grid to appear
+    await page.click('#btnSearch');
+    await page.waitForSelector('.e-grid', { timeout, state: 'visible' });
 
     const headerLabels = await page.$$eval('.e-grid .e-headercell .e-headercelldiv', headers =>
       headers.map(h => h.innerText.trim())
@@ -105,7 +108,9 @@ async function searchIllinoisMedicaid(npi, options = {}) {
     result.metadata.contentSnippet = detailText ? detailText.slice(0, 600) : '';
     result.metadata.durationMs = Date.now() - startTime;
 
-    const artifactDir = path.resolve(__dirname, '..', 'artifacts');
+    const os = require('os');
+    // Use OS temp directory to avoid ASAR issues when packaged
+    const artifactDir = path.join(os.tmpdir(), 'provider-directory-artifacts');
     if (!fs.existsSync(artifactDir)) {
       fs.mkdirSync(artifactDir, { recursive: true });
     }
