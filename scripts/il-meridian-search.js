@@ -172,6 +172,14 @@ async function performNpiSearch(page, npi, timeout) {
 
 async function extractProviderResults(page) {
   return page.evaluate(() => {
+    // Check for "No Results" message first
+    const noResultsText = document.body.textContent.toLowerCase();
+    if (noResultsText.includes('no results') ||
+        noResultsText.includes('0 results') ||
+        noResultsText.includes('no providers matching')) {
+      return [];
+    }
+
     // Try multiple selector patterns
     let cards = Array.from(document.querySelectorAll('search-result md-card'));
 
@@ -179,13 +187,8 @@ async function extractProviderResults(page) {
       cards = Array.from(document.querySelectorAll('search-result'));
     }
 
-    if (cards.length === 0) {
-      cards = Array.from(document.querySelectorAll('md-card'));
-    }
-
-    if (cards.length === 0) {
-      cards = Array.from(document.querySelectorAll('[class*="result"]'));
-    }
+    // Don't use generic md-card or class*="result" as fallbacks - too many false positives
+    // If we didn't find search-result elements, return empty
 
     return cards.map(card => {
       const textFrom = selector => {
@@ -222,7 +225,7 @@ async function extractProviderResults(page) {
         inNetwork: getIndicator('[id^="in-network"] webl-component'),
         primaryCareProvider: getIndicator('[id^="primary-care-provider"] webl-component')
       };
-    });
+    }).filter(provider => provider.name); // Filter out results with no name (false positives)
   });
 }
 
