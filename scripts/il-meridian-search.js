@@ -12,7 +12,7 @@ const PLAN_CONFIG = {
   }
 };
 
-const DEFAULT_LOCATION = '60403-1201';
+const DEFAULT_LOCATION = '60403';
 
 function formatPhone(text) {
   if (!text) return null;
@@ -172,14 +172,6 @@ async function performNpiSearch(page, npi, timeout) {
 
 async function extractProviderResults(page) {
   return page.evaluate(() => {
-    // Check for "No Results" message first
-    const noResultsText = document.body.textContent.toLowerCase();
-    if (noResultsText.includes('no results') ||
-        noResultsText.includes('0 results') ||
-        noResultsText.includes('no providers matching')) {
-      return [];
-    }
-
     // Try multiple selector patterns
     let cards = Array.from(document.querySelectorAll('search-result md-card'));
 
@@ -187,8 +179,22 @@ async function extractProviderResults(page) {
       cards = Array.from(document.querySelectorAll('search-result'));
     }
 
-    // Don't use generic md-card or class*="result" as fallbacks - too many false positives
-    // If we didn't find search-result elements, return empty
+    // If no cards found, check if there's actually a "no results" message VISIBLE
+    if (cards.length === 0) {
+      const noResultsHeadings = Array.from(document.querySelectorAll('h2, h3, .no-results, [class*="no-results"]'));
+      for (const heading of noResultsHeadings) {
+        // Check if element is visible
+        const style = window.getComputedStyle(heading);
+        if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+          const text = heading.textContent.toLowerCase();
+          if (text.includes('no results') || text.includes('0 results') || text.includes('no providers matching')) {
+            return [];
+          }
+        }
+      }
+      // If we still have no cards and no visible "no results" message, return empty
+      return [];
+    }
 
     return cards.map(card => {
       const textFrom = selector => {
@@ -328,6 +334,26 @@ async function searchIllinoisMeridian(npi, options = {}) {
     result.success = true;
   } catch (error) {
     result.error = error.message;
+
+    // Save debug artifacts on error
+    const artifactDir = ensureArtifactsDir();
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const basePath = path.join(artifactDir, `il-meridian-error-${npi}-${timestamp}`);
+
+    try {
+      await page.screenshot({ path: `${basePath}.png`, fullPage: true });
+      result.screenshotPath = `${basePath}.png`;
+    } catch (err) {
+      result.metadata.screenshotError = err.message;
+    }
+
+    try {
+      const html = await page.content();
+      fs.writeFileSync(`${basePath}.html`, html, 'utf8');
+      result.rawHtmlPath = `${basePath}.html`;
+    } catch (err) {
+      result.metadata.htmlError = err.message;
+    }
   } finally {
     await context.close().catch(() => {});
     await browser.close().catch(() => {});

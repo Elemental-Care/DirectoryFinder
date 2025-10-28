@@ -47,7 +47,7 @@ async function searchCountyCareProvider(npi, options = {}) {
     headless = true,
     slowMo = 0,
     timeout = 60000,
-    location = '60403-1201'
+    location = '60403'
   } = options;
 
   const result = {
@@ -167,26 +167,28 @@ async function searchCountyCareProvider(npi, options = {}) {
       await page.waitForTimeout(5000);
     }
 
-    // Step 8: Check for "no results" message first
+    // Step 8: Check for actual results
     console.log('Checking for results...');
+
+    // Check page text for "no results" or actual results count
     const pageText = await page.textContent('body');
 
-    // Check for various "no results" indicators
+    // Check for specific "no results" messages (be specific to avoid false positives)
     const noResultsPatterns = [
-      /no.*results/i,
-      /no.*providers.*found/i,
-      /no.*matches/i,
-      /didn't find/i,
-      /couldn't find/i,
-      /0.*results/i,
-      /try.*again/i,
-      /refine.*search/i,
-      /suggestions to get you back on track/i
+      /no providers found/i,
+      /no matches found/i,
+      /didn't find any/i,
+      /couldn't find any/i,
+      /0 results/i,
+      /0 search results/i
     ];
 
     const hasNoResults = noResultsPatterns.some(pattern => pattern.test(pageText));
 
-    if (hasNoResults) {
+    // Also check if we have actual result indicators
+    const hasResults = /\d+\s+search results/i.test(pageText) || /displaying \d+-\d+ of \d+/i.test(pageText);
+
+    if (hasNoResults && !hasResults) {
       console.log('No results found - provider not in County Care network');
       result.error = 'Provider not found in County Care network';
       result.success = false;
@@ -225,6 +227,7 @@ async function searchCountyCareProvider(npi, options = {}) {
       // More specific selectors - avoid generic cards and divs
       // Look for actual provider result cards with more structure
       const resultElements = document.querySelectorAll([
+        '[data-test="provider-card"]',
         '[data-provider-id]',
         '[data-providerid]',
         '.provider-card',
@@ -407,7 +410,7 @@ async function main() {
   const options = {
     headless: !process.env.PLAYWRIGHT_HEADFUL,
     slowMo: process.env.PLAYWRIGHT_SLOWMO ? parseInt(process.env.PLAYWRIGHT_SLOWMO, 10) : 0,
-    location: locationArg || '60403-1201'
+    location: locationArg || '60403'
   };
 
   const result = await searchCountyCareProvider(npiArg.trim(), options);
