@@ -167,17 +167,95 @@ async function searchCountyCareProvider(npi, options = {}) {
       await page.waitForTimeout(5000);
     }
 
-    // Step 8: Extract results
+    // Step 8: Check for "no results" message first
+    console.log('Checking for results...');
+    const pageText = await page.textContent('body');
+
+    // Check for various "no results" indicators
+    const noResultsPatterns = [
+      /no.*results/i,
+      /no.*providers.*found/i,
+      /no.*matches/i,
+      /didn't find/i,
+      /couldn't find/i,
+      /0.*results/i,
+      /try.*again/i,
+      /refine.*search/i,
+      /suggestions to get you back on track/i
+    ];
+
+    const hasNoResults = noResultsPatterns.some(pattern => pattern.test(pageText));
+
+    if (hasNoResults) {
+      console.log('No results found - provider not in County Care network');
+      result.error = 'Provider not found in County Care network';
+      result.success = false;
+      result.providers = [];
+      result.metadata.durationMs = Date.now() - start;
+
+      // Save artifacts for debugging
+      const artifactDir = ensureArtifactsDir();
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+      const basePath = path.join(artifactDir, `countycare-noresults-${npiStr}-${timestamp}`);
+
+      try {
+        await page.screenshot({ path: `${basePath}.png`, fullPage: true });
+        result.screenshotPath = `${basePath}.png`;
+      } catch (err) {
+        result.metadata.screenshotError = err.message;
+      }
+
+      try {
+        const html = await page.content();
+        fs.writeFileSync(`${basePath}.html`, html, 'utf8');
+        result.rawHtmlPath = `${basePath}.html`;
+      } catch (err) {
+        result.metadata.htmlError = err.message;
+      }
+
+      return result;
+    }
+
+    // Step 9: Extract results (only if we didn't get "no results")
     console.log('Extracting search results...');
     const providers = await page.evaluate(({ firstName, lastName }) => {
       const results = [];
       const seen = new Set();
 
-      // Look for result items in HealthSparq format - use more specific selectors
-      const resultElements = document.querySelectorAll('[class*="result"], [class*="Result"], [class*="provider"], [class*="Provider"], .card');
+      // More specific selectors - avoid generic cards and divs
+      // Look for actual provider result cards with more structure
+      const resultElements = document.querySelectorAll([
+        '[data-provider-id]',
+        '[data-providerid]',
+        '.provider-card',
+        '.provider-result',
+        '.search-result-item',
+        '[class*="ProviderCard"]',
+        '[class*="provider-card"]'
+      ].join(', '));
 
-      resultElements.forEach(el => {
+      // If no specific provider cards found, fall back but with stricter validation
+      let elementsToCheck = resultElements.length > 0 ? resultElements :
+                            document.querySelectorAll('.card, [class*="result-item"]');
+
+      elementsToCheck.forEach(el => {
         const text = el.textContent || '';
+
+        // Skip elements that are clearly error messages or UI chrome
+        const skipPatterns = [
+          /search area/i,
+          /suggestions to get you back/i,
+          /try again/i,
+          /refine your search/i,
+          /no results/i,
+          /filter by/i,
+          /sort by/i,
+          /^(map|list|grid)$/i
+        ];
+
+        if (skipPatterns.some(pattern => pattern.test(text))) {
+          return;
+        }
 
         // Check if this element contains provider information
         if (text.includes(lastName) || text.includes(firstName)) {
@@ -197,10 +275,21 @@ async function searchCountyCareProvider(npi, options = {}) {
             if (nameText &&
                 !nameText.toLowerCase().includes('accepting new patients') &&
                 !nameText.toLowerCase().includes('local providers') &&
+                !nameText.toLowerCase().includes('search area') &&
+                !nameText.toLowerCase().includes('suggestions') &&
                 nameText.length > 5 &&
                 nameText.length < 100) {
               provider.name = nameText;
             }
+          }
+
+          // Must have actual contact info or specialty to be considered valid
+          const hasContactInfo = el.querySelector('[class*="phone"], [class*="Phone"], [class*="address"], [class*="Address"]');
+          const hasSpecialty = el.querySelector('[class*="specialty"], [class*="Specialty"]');
+
+          if (!hasContactInfo && !hasSpecialty && provider.name) {
+            // This is likely not a real provider result
+            return;
           }
 
           // Try to extract specialty
