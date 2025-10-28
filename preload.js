@@ -22,7 +22,8 @@ const api = {
     searchAmbetter: ({ npi, planKey, location }) => ipcRenderer.invoke('ambetter-search', { npi, planKey, location }),
     searchAetnaCommercial: (npi) => ipcRenderer.invoke('aetna-commercial-search', { npi }),
     searchCigna: ({ npi, location }) => ipcRenderer.invoke('cigna-search', { npi, location }),
-    searchCountyCare: ({ npi, location }) => ipcRenderer.invoke('countycare-search', { npi, location })
+    searchCountyCare: ({ npi, location }) => ipcRenderer.invoke('countycare-search', { npi, location }),
+    onMainLog: (callback) => ipcRenderer.on('main-process-log', (event, data) => callback(data))
 };
 
 contextBridge.exposeInMainWorld('providerDesktop', api);

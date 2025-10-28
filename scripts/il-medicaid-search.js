@@ -50,9 +50,25 @@ async function searchIllinoisMedicaid(npi, options = {}) {
 
     await page.fill('#NPI', npi);
 
-    // Click search and wait for the grid to appear
+    // Click search and wait for either the grid or a "no results" message
     await page.click('#btnSearch');
-    await page.waitForSelector('.e-grid', { timeout, state: 'visible' });
+
+    // Wait for either success (grid appears) or no results message
+    const gridOrNoResults = await Promise.race([
+      page.waitForSelector('.e-grid', { timeout, state: 'visible' }).then(() => 'grid'),
+      page.waitForSelector('text=/no.*record/i', { timeout: 5000 }).then(() => 'no-results').catch(() => null),
+      page.waitForTimeout(timeout).then(() => 'timeout')
+    ]);
+
+    if (gridOrNoResults === 'no-results' || gridOrNoResults === 'timeout') {
+      // Check if there's actually a "no results" message in the page
+      const pageText = await page.textContent('body').catch(() => '');
+      if (/no.*record|not.*found|0.*result/i.test(pageText)) {
+        throw new Error('No rows returned for the provided NPI');
+      }
+      // If we timed out and there's no clear message, throw timeout error
+      throw new Error('Search timed out - grid did not load');
+    }
 
     const headerLabels = await page.$$eval('.e-grid .e-headercell .e-headercelldiv', headers =>
       headers.map(h => h.innerText.trim())

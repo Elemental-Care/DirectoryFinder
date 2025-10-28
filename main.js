@@ -21,6 +21,31 @@ const AETNA_DEMO_TOKEN_ENDPOINT = `${AETNA_DEMO_ROOT}/fhirserver_auth/oauth2/tok
 const UHC_BASE = 'https://flex.optum.com/fhirpublic/R4';
 const CENTENE_BASE = 'https://prod.api.centene.com/fhir/providerdirectory';
 let proxyServer;
+let mainWindow;
+
+// Override console methods to send logs to renderer
+const originalConsoleLog = console.log;
+const originalConsoleError = console.error;
+const originalConsoleWarn = console.warn;
+
+function sendToRenderer(level, ...args) {
+    const message = args.map(arg =>
+        typeof arg === 'object' ? JSON.stringify(arg, null, 2) : String(arg)
+    ).join(' ');
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('main-process-log', { level, message, timestamp: new Date().toISOString() });
+    }
+
+    // Still log to terminal
+    const originalMethod = level === 'error' ? originalConsoleError :
+                           level === 'warn' ? originalConsoleWarn : originalConsoleLog;
+    originalMethod.apply(console, args);
+}
+
+console.log = (...args) => sendToRenderer('log', ...args);
+console.error = (...args) => sendToRenderer('error', ...args);
+console.warn = (...args) => sendToRenderer('warn', ...args);
 
 function createProxyServer() {
     if (proxyServer) {
@@ -190,16 +215,26 @@ function collectRequestBody(req) {
 
 // Auto-update configuration
 function setupAutoUpdater() {
+    console.log('[AUTO-UPDATE] Initializing auto-updater...');
+    console.log('[AUTO-UPDATE] App version:', app.getVersion());
+    console.log('[AUTO-UPDATE] Platform:', process.platform);
+    console.log('[AUTO-UPDATE] Is packaged:', app.isPackaged);
+
     // Configure auto-updater
     autoUpdater.autoDownload = false;
     autoUpdater.autoInstallOnAppQuit = true;
 
-    // Check for updates when app starts
-    autoUpdater.checkForUpdatesAndNotify();
+    console.log('[AUTO-UPDATE] Configuration set: autoDownload=false, autoInstallOnAppQuit=true');
+
+    // Event: Checking for update
+    autoUpdater.on('checking-for-update', () => {
+        console.log('[AUTO-UPDATE] Checking for updates...');
+    });
 
     // Event: Update available
     autoUpdater.on('update-available', (info) => {
-        console.log('Update available:', info.version);
+        console.log('[AUTO-UPDATE] Update available:', info.version);
+        console.log('[AUTO-UPDATE] Release info:', JSON.stringify(info, null, 2));
         dialog.showMessageBox({
             type: 'info',
             title: 'Update Available',
@@ -210,14 +245,17 @@ function setupAutoUpdater() {
             cancelId: 1
         }).then((result) => {
             if (result.response === 0) {
+                console.log('[AUTO-UPDATE] User chose to download update');
                 autoUpdater.downloadUpdate();
+            } else {
+                console.log('[AUTO-UPDATE] User chose to download later');
             }
         });
     });
 
     // Event: Update downloaded
     autoUpdater.on('update-downloaded', (info) => {
-        console.log('Update downloaded:', info.version);
+        console.log('[AUTO-UPDATE] Update downloaded:', info.version);
         dialog.showMessageBox({
             type: 'info',
             title: 'Update Ready',
@@ -228,31 +266,45 @@ function setupAutoUpdater() {
             cancelId: 1
         }).then((result) => {
             if (result.response === 0) {
+                console.log('[AUTO-UPDATE] User chose to restart now');
                 autoUpdater.quitAndInstall(false, true);
+            } else {
+                console.log('[AUTO-UPDATE] User chose to restart later');
             }
         });
     });
 
     // Event: Download progress
     autoUpdater.on('download-progress', (progressObj) => {
-        console.log(`Download progress: ${progressObj.percent}%`);
+        console.log(`[AUTO-UPDATE] Download progress: ${progressObj.percent.toFixed(2)}%`);
     });
 
     // Event: Update not available
-    autoUpdater.on('update-not-available', () => {
-        console.log('App is up to date');
+    autoUpdater.on('update-not-available', (info) => {
+        console.log('[AUTO-UPDATE] App is up to date');
+        console.log('[AUTO-UPDATE] Current version info:', JSON.stringify(info, null, 2));
     });
 
     // Event: Error
     autoUpdater.on('error', (err) => {
-        console.error('Update error:', err);
+        console.error('[AUTO-UPDATE] Update error:', err);
+        console.error('[AUTO-UPDATE] Error stack:', err.stack);
     });
+
+    // Check for updates when app starts
+    console.log('[AUTO-UPDATE] Starting update check...');
+    try {
+        autoUpdater.checkForUpdatesAndNotify();
+        console.log('[AUTO-UPDATE] Update check initiated successfully');
+    } catch (error) {
+        console.error('[AUTO-UPDATE] Failed to initiate update check:', error);
+    }
 }
 
 function createWindow() {
     createProxyServer();
 
-    const mainWindow = new BrowserWindow({
+    mainWindow = new BrowserWindow({
         width: 1280,
         height: 900,
         webPreferences: {
@@ -265,6 +317,11 @@ function createWindow() {
     });
 
     mainWindow.loadFile(path.join(__dirname, 'app', 'index.html'));
+
+    // Open DevTools in development mode
+    if (!app.isPackaged) {
+        mainWindow.webContents.openDevTools();
+    }
 }
 
 ipcMain.handle('medicaid-search', async (event, npi) => {

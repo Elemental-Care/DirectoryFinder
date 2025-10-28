@@ -6143,6 +6143,16 @@
                 }
             });
         });
+
+        // Listen for main process logs (from Electron main process and Playwright)
+        if (window.providerDesktop && window.providerDesktop.onMainLog) {
+            window.providerDesktop.onMainLog((logData) => {
+                const { level, message, timestamp } = logData;
+                const color = level === 'error' ? 'red' : level === 'warn' ? 'orange' : 'inherit';
+                const time = new Date(timestamp).toLocaleTimeString();
+                console.log(`%c[${time}] [MAIN] ${message}`, `color: ${color}`);
+            });
+        }
     </script>
 </body>
 </html>
