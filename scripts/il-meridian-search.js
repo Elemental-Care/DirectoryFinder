@@ -91,8 +91,23 @@ async function performNpiSearch(page, npi, timeout) {
   }
 
   await page.waitForSelector('#multitype-comobobox-search', { timeout });
+  await page.click('#multitype-comobobox-search');
   await page.fill('#multitype-comobobox-search', '');
-  await page.type('#multitype-comobobox-search', npiStr, { delay: 50 });
+  await page.waitForTimeout(300);
+
+  // Type NPI with increased delay and verify it was entered correctly
+  await page.type('#multitype-comobobox-search', npiStr, { delay: 100 });
+  await page.waitForTimeout(500);
+
+  // Verify the full NPI was entered
+  const inputValue = await page.inputValue('#multitype-comobobox-search');
+  if (inputValue !== npiStr) {
+    console.warn(`NPI input mismatch: expected "${npiStr}", got "${inputValue}". Retrying...`);
+    // Retry with fill method instead
+    await page.fill('#multitype-comobobox-search', npiStr);
+    await page.waitForTimeout(500);
+  }
+
   await page.waitForSelector('.suggested-multitype-result', { timeout });
 
   const npiOption = page.locator('.suggested-multitype-result', { hasText: 'Search By NPI' });
