@@ -224,113 +224,78 @@ async function searchCountyCareProvider(npi, options = {}) {
       const results = [];
       const seen = new Set();
 
-      // More specific selectors - avoid generic cards and divs
-      // Look for actual provider result cards with more structure
-      const resultElements = document.querySelectorAll([
-        '[data-test="provider-card"]',
-        '[data-provider-id]',
-        '[data-providerid]',
-        '.provider-card',
-        '.provider-result',
-        '.search-result-item',
-        '[class*="ProviderCard"]',
-        '[class*="provider-card"]'
-      ].join(', '));
+      // County Care uses data-test="provider-card" for provider cards
+      const providerCards = document.querySelectorAll('[data-test="provider-card"]');
 
-      // If no specific provider cards found, fall back but with stricter validation
-      let elementsToCheck = resultElements.length > 0 ? resultElements :
-                            document.querySelectorAll('.card, [class*="result-item"]');
+      console.log(`Found ${providerCards.length} provider card(s)`);
 
-      elementsToCheck.forEach(el => {
-        const text = el.textContent || '';
+      providerCards.forEach((card, index) => {
+        console.log(`Processing card ${index + 1}`);
 
-        // Skip elements that are clearly error messages or UI chrome
-        const skipPatterns = [
-          /search area/i,
-          /suggestions to get you back/i,
-          /try again/i,
-          /refine your search/i,
-          /no results/i,
-          /filter by/i,
-          /sort by/i,
-          /^(map|list|grid)$/i
-        ];
+        const provider = {
+          name: null,
+          specialty: null,
+          location: null,
+          phone: null,
+          accepting: null
+        };
 
-        if (skipPatterns.some(pattern => pattern.test(text))) {
-          return;
+        // Extract name from h2 with data-test="provider-card-header-name"
+        const nameEl = card.querySelector('[data-test="provider-card-header-name"]') ||
+                       card.querySelector('h2') ||
+                       card.querySelector('h3');
+        if (nameEl) {
+          provider.name = nameEl.textContent.trim();
+          console.log(`Extracted name: ${provider.name}`);
         }
 
-        // Check if this element contains provider information
-        if (text.includes(lastName) || text.includes(firstName)) {
-          const provider = {
-            name: null,
-            specialty: null,
-            location: null,
-            phone: null,
-            accepting: null
-          };
+        // Extract specialty - look for data-test="specialties" or generic
+        const specialtyEl = card.querySelector('[data-test="specialties"]') ||
+                           card.querySelector('[class*="specialty"]') ||
+                           card.querySelector('[class*="Specialty"]');
+        if (specialtyEl) {
+          provider.specialty = specialtyEl.textContent.trim();
+          console.log(`Extracted specialty: ${provider.specialty}`);
+        }
 
-          // Try to extract name - prioritize headings and name-specific elements
-          const nameEl = el.querySelector('[class*="name"], [class*="Name"], h2, h3, h4, h5, strong');
-          if (nameEl) {
-            const nameText = nameEl.textContent.trim();
-            // Filter out common UI text that isn't a provider name
-            if (nameText &&
-                !nameText.toLowerCase().includes('accepting new patients') &&
-                !nameText.toLowerCase().includes('local providers') &&
-                !nameText.toLowerCase().includes('search area') &&
-                !nameText.toLowerCase().includes('suggestions') &&
-                nameText.length > 5 &&
-                nameText.length < 100) {
-              provider.name = nameText;
-            }
+        // Extract address - look for data-test="provider-address" or address element
+        const addressEl = card.querySelector('[data-test="provider-address"]') ||
+                         card.querySelector('address') ||
+                         card.querySelector('[class*="address"]');
+        if (addressEl) {
+          provider.location = addressEl.textContent.trim();
+          console.log(`Extracted location: ${provider.location}`);
+        }
+
+        // Extract phone - look in contact section or phone links
+        const phoneLink = card.querySelector('a[href^="tel:"]');
+        if (phoneLink) {
+          provider.phone = phoneLink.textContent.trim();
+          console.log(`Extracted phone: ${provider.phone}`);
+        }
+
+        // Check if accepting new patients from text content
+        const cardText = card.textContent || '';
+        if (cardText.toLowerCase().includes('accepting') && cardText.toLowerCase().includes('new patients')) {
+          provider.accepting = 'Yes';
+        } else if (cardText.toLowerCase().includes('not accepting')) {
+          provider.accepting = 'No';
+        }
+
+        // Add provider if we have at least a name
+        if (provider.name) {
+          const normalizedName = provider.name.toLowerCase().replace(/\s+/g, ' ').trim();
+          if (!seen.has(normalizedName)) {
+            seen.add(normalizedName);
+            results.push(provider);
+            console.log(`Added provider: ${provider.name}`);
           }
-
-          // Must have actual contact info or specialty to be considered valid
-          const hasContactInfo = el.querySelector('[class*="phone"], [class*="Phone"], [class*="address"], [class*="Address"]');
-          const hasSpecialty = el.querySelector('[class*="specialty"], [class*="Specialty"]');
-
-          if (!hasContactInfo && !hasSpecialty && provider.name) {
-            // This is likely not a real provider result
-            return;
-          }
-
-          // Try to extract specialty
-          const specialtyEl = el.querySelector('[class*="specialty"], [class*="Specialty"]');
-          if (specialtyEl) {
-            provider.specialty = specialtyEl.textContent.trim();
-          }
-
-          // Try to extract location
-          const locationEl = el.querySelector('[class*="address"], [class*="Address"], [class*="location"], [class*="Location"]');
-          if (locationEl) {
-            provider.location = locationEl.textContent.trim();
-          }
-
-          // Try to extract phone
-          const phoneEl = el.querySelector('[class*="phone"], [class*="Phone"]');
-          if (phoneEl) {
-            provider.phone = phoneEl.textContent.trim();
-          }
-
-          // Check if accepting new patients
-          if (text.toLowerCase().includes('accepting new patients')) {
-            provider.accepting = 'Yes';
-          } else if (text.toLowerCase().includes('not accepting')) {
-            provider.accepting = 'No';
-          }
-
-          // Only add if we have a valid provider name and it hasn't been seen before
-          if (provider.name) {
-            const normalizedName = provider.name.toLowerCase().replace(/\s+/g, ' ').trim();
-            if (!seen.has(normalizedName)) {
-              seen.add(normalizedName);
-              results.push(provider);
-            }
-          }
+        } else {
+          console.log(`Skipped card ${index + 1} - no name found`);
         }
       });
 
+      console.log(`Total providers extracted: ${results.length}`);
       return results;
     }, { firstName: providerInfo.firstName, lastName: providerInfo.lastName });
 
