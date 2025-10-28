@@ -15,7 +15,9 @@ function formatPhone(text) {
 }
 
 function ensureArtifactsDir() {
-  const artifactDir = path.resolve(__dirname, '..', 'artifacts');
+  const os = require('os');
+  // Use OS temp directory to avoid ASAR issues when packaged
+  const artifactDir = path.join(os.tmpdir(), 'provider-directory-artifacts');
   if (!fs.existsSync(artifactDir)) {
     fs.mkdirSync(artifactDir, { recursive: true });
   }
