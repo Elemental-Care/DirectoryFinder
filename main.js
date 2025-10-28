@@ -287,14 +287,24 @@ function setupAutoUpdater() {
 
     // Event: Error
     autoUpdater.on('error', (err) => {
-        console.error('[AUTO-UPDATE] Update error:', err);
-        console.error('[AUTO-UPDATE] Error stack:', err.stack);
+        // Don't spam console with 404 errors when no releases exist yet
+        if (err.statusCode === 404) {
+            console.log('[AUTO-UPDATE] No releases found yet (this is normal for new apps)');
+        } else {
+            console.error('[AUTO-UPDATE] Update error:', err);
+            console.error('[AUTO-UPDATE] Error stack:', err.stack);
+        }
     });
 
     // Check for updates when app starts
     console.log('[AUTO-UPDATE] Starting update check...');
     try {
-        autoUpdater.checkForUpdatesAndNotify();
+        autoUpdater.checkForUpdatesAndNotify().catch(err => {
+            // Silently handle 404s (no releases exist yet)
+            if (err.statusCode !== 404) {
+                console.error('[AUTO-UPDATE] Update check failed:', err.message);
+            }
+        });
         console.log('[AUTO-UPDATE] Update check initiated successfully');
     } catch (error) {
         console.error('[AUTO-UPDATE] Failed to initiate update check:', error);
