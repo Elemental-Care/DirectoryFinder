@@ -22,6 +22,7 @@ const UHC_BASE = 'https://flex.optum.com/fhirpublic/R4';
 const CENTENE_BASE = 'https://prod.api.centene.com/fhir/providerdirectory';
 let proxyServer;
 let mainWindow;
+let isUpdating = false;
 
 // Override console methods to send logs to renderer
 const originalConsoleLog = console.log;
@@ -279,7 +280,7 @@ function setupAutoUpdater() {
     autoUpdater.on('update-downloaded', (info) => {
         console.log('[AUTO-UPDATE] Update downloaded successfully:', info.version);
         console.log('[AUTO-UPDATE] Downloaded files:', JSON.stringify(info.files, null, 2));
-        dialog.showMessageBox({
+        dialog.showMessageBox(mainWindow, {
             type: 'info',
             title: 'Update Ready',
             message: `Version ${info.version} has been downloaded.`,
@@ -290,16 +291,34 @@ function setupAutoUpdater() {
         }).then((result) => {
             if (result.response === 0) {
                 console.log('[AUTO-UPDATE] User chose to restart now');
-                setImmediate(() => autoUpdater.quitAndInstall(false, true));
+                console.log('[AUTO-UPDATE] Calling quitAndInstall...');
+
+                try {
+                    // Close all windows first
+                    BrowserWindow.getAllWindows().forEach(win => {
+                        if (!win.isDestroyed()) {
+                            win.close();
+                        }
+                    });
+
+                    // Quit and install with proper parameters
+                    // isSilent=true, isForceRunAfter=true
+                    autoUpdater.quitAndInstall(true, true);
+                } catch (err) {
+                    console.error('[AUTO-UPDATE] Error during quitAndInstall:', err);
+                }
             } else {
                 console.log('[AUTO-UPDATE] User chose to restart later');
             }
+        }).catch((err) => {
+            console.error('[AUTO-UPDATE] Error showing update dialog:', err);
         });
     });
 
     // Event: Before quit for update
     autoUpdater.on('before-quit-for-update', () => {
         console.log('[AUTO-UPDATE] App is quitting to install update');
+        isUpdating = true;
     });
 
     // Event: Download progress
@@ -583,7 +602,8 @@ app.whenReady().then(async () => {
 });
 
 app.on('window-all-closed', () => {
-    if (process.platform !== 'darwin') {
+    // Quit on all platforms when updating, or on non-macOS platforms normally
+    if (isUpdating || process.platform !== 'darwin') {
         app.quit();
     }
 });
