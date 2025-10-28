@@ -108,12 +108,70 @@ async function performNpiSearch(page, npi, timeout) {
     npiOption.first().click()
   ]);
 
-  await page.waitForSelector('search-result md-card', { timeout });
+  // Wait for results to load - try multiple selectors
+  try {
+    await page.waitForSelector('search-result md-card', { timeout: 10000 });
+  } catch (e) {
+    // Try alternative selectors
+    const alternativeSelectors = [
+      'search-result',
+      '[id*="search-result"]',
+      '.search-result',
+      'md-card',
+      '.provider-card',
+      '[class*="result"]'
+    ];
+
+    let found = false;
+    for (const selector of alternativeSelectors) {
+      try {
+        await page.waitForSelector(selector, { timeout: 2000 });
+        found = true;
+        break;
+      } catch {}
+    }
+
+    if (!found) {
+      // Check if there's a "no results" message
+      const noResultsSelectors = [
+        'text=/no.*results/i',
+        'text=/not found/i',
+        'text=/no providers/i',
+        '[class*="no-results"]',
+        '[class*="empty"]'
+      ];
+
+      for (const selector of noResultsSelectors) {
+        try {
+          await page.waitForSelector(selector, { timeout: 1000 });
+          throw new Error(`No providers found for NPI "${npiStr}" in this plan.`);
+        } catch (err) {
+          if (err.message.includes('No providers found')) throw err;
+        }
+      }
+
+      throw new Error(`Timeout waiting for search results. The page may have changed or results are not loading properly.`);
+    }
+  }
 }
 
 async function extractProviderResults(page) {
   return page.evaluate(() => {
-    const cards = Array.from(document.querySelectorAll('search-result md-card'));
+    // Try multiple selector patterns
+    let cards = Array.from(document.querySelectorAll('search-result md-card'));
+
+    if (cards.length === 0) {
+      cards = Array.from(document.querySelectorAll('search-result'));
+    }
+
+    if (cards.length === 0) {
+      cards = Array.from(document.querySelectorAll('md-card'));
+    }
+
+    if (cards.length === 0) {
+      cards = Array.from(document.querySelectorAll('[class*="result"]'));
+    }
+
     return cards.map(card => {
       const textFrom = selector => {
         const el = card.querySelector(selector);
@@ -140,9 +198,9 @@ async function extractProviderResults(page) {
       const phoneLink = card.querySelector('a[href^="tel:"]');
 
       return {
-        name: textFrom('h2'),
-        organization: textFrom('[id^="provider-org-name"] span'),
-        address: textFrom('[id^="provider-formatted-address"] span'),
+        name: textFrom('h2') || textFrom('h3') || textFrom('[class*="name"]'),
+        organization: textFrom('[id^="provider-org-name"] span') || textFrom('[class*="organization"]'),
+        address: textFrom('[id^="provider-formatted-address"] span') || textFrom('[class*="address"]'),
         phoneRaw: phoneLink ? phoneLink.textContent : null,
         specialties,
         acceptingNewPatients: getIndicator('[id^="accept-new-patients"] webl-component'),

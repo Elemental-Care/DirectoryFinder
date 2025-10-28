@@ -161,27 +161,60 @@ async function searchCignaProvider(npi, options = {}) {
     await nameInput.click();
     await page.waitForTimeout(500);
     await nameInput.fill(providerInfo.lastName);
-    await page.waitForTimeout(1000);
+    await page.waitForTimeout(2000); // Increased wait time for autocomplete
 
-    // Step 5: Click search button
-    console.log('Clicking search button...');
-    const searchButton = page.locator('.category-search-form__btn');
-    await searchButton.waitFor({ state: 'visible', timeout: 5000 });
-    await searchButton.click();
-    await page.waitForTimeout(5000);
+    // Step 5: Check if autocomplete dropdown appeared
+    console.log('Checking for autocomplete dropdown...');
+    let hasAutocomplete = false;
+    try {
+      await page.waitForSelector('button[role="option"]', { timeout: 3000 });
+      hasAutocomplete = true;
+      console.log('Autocomplete dropdown detected');
+    } catch {
+      console.log('No autocomplete dropdown, trying search button instead');
+    }
 
-    // Step 6: Wait for results to load (autocomplete dropdown should appear)
-    console.log('Waiting for search results dropdown...');
-    await page.waitForTimeout(5000);
+    if (!hasAutocomplete) {
+      // If no autocomplete, click search button
+      console.log('Clicking search button...');
+      const searchButton = page.locator('.category-search-form__btn');
+      try {
+        await searchButton.waitFor({ state: 'visible', timeout: 5000 });
+        await searchButton.click();
+        await page.waitForTimeout(5000);
+      } catch (e) {
+        console.log('Search button not found or not clickable');
+      }
+    } else {
+      await page.waitForTimeout(1000);
+    }
+
+    // Step 6: Wait for results to load
+    console.log('Waiting for search results...');
+    await page.waitForTimeout(3000);
 
     // Step 7: Extract autocomplete dropdown results
     console.log('Looking for provider results...');
 
     // Look for the autocomplete dropdown results
     // These appear as button[role="option"] inside typeahead-container
-    const resultLinkTexts = await page.evaluate(({ lastName }) => {
+    const resultLinkTexts = await page.evaluate(({ lastName, firstName }) => {
       const results = [];
-      const options = Array.from(document.querySelectorAll('button[role="option"]'));
+
+      // Try multiple selector patterns for options
+      const selectors = [
+        'button[role="option"]',
+        '[role="option"]',
+        '.typeahead-option',
+        '[class*="suggestion"]',
+        '[class*="result-item"]'
+      ];
+
+      let options = [];
+      for (const selector of selectors) {
+        options = Array.from(document.querySelectorAll(selector));
+        if (options.length > 0) break;
+      }
 
       for (const option of options) {
         const text = option.textContent.trim();
@@ -189,7 +222,11 @@ async function searchCignaProvider(npi, options = {}) {
         if (text.includes('Search') && text.includes('in Doctor Names')) {
           continue;
         }
-        // Match options that contain the last name
+        // Skip empty or very short results
+        if (text.length < 5) {
+          continue;
+        }
+        // Match options that contain the last name (case insensitive)
         if (text.toLowerCase().includes(lastName.toLowerCase())) {
           results.push({
             text: text.replace(/<[^>]*>/g, '').trim(), // Remove any HTML tags
@@ -199,9 +236,78 @@ async function searchCignaProvider(npi, options = {}) {
       }
 
       return results;
-    }, { lastName: providerInfo.lastName });
+    }, { lastName: providerInfo.lastName, firstName: providerInfo.firstName });
 
     if (resultLinkTexts.length === 0) {
+      // Try alternative: look for result cards on the page
+      console.log('No dropdown results, checking for result cards on page...');
+      const pageResults = await page.evaluate(({ lastName, firstName }) => {
+        const results = [];
+        const cardSelectors = [
+          '[class*="provider-card"]',
+          '[class*="result-card"]',
+          '[data-testid*="provider"]',
+          '[class*="search-result"]'
+        ];
+
+        let cards = [];
+        for (const selector of cardSelectors) {
+          cards = Array.from(document.querySelectorAll(selector));
+          if (cards.length > 0) break;
+        }
+
+        for (const card of cards) {
+          const text = card.textContent;
+          if (text.toLowerCase().includes(lastName.toLowerCase())) {
+            // Try to extract name
+            const nameEl = card.querySelector('h1, h2, h3, h4, [class*="name"], [class*="title"]');
+            const name = nameEl ? nameEl.textContent.trim() : null;
+
+            // Try to extract specialty
+            const specialtyEl = card.querySelector('[class*="specialty"], [class*="practice"]');
+            const specialty = specialtyEl ? specialtyEl.textContent.trim() : null;
+
+            // Try to extract location
+            const locationEl = card.querySelector('[class*="address"], [class*="location"]');
+            const location = locationEl ? locationEl.textContent.trim() : null;
+
+            if (name) {
+              results.push({ name, specialty, location });
+            }
+          }
+        }
+
+        return results;
+      }, { lastName: providerInfo.lastName, firstName: providerInfo.firstName });
+
+      if (pageResults.length > 0) {
+        console.log(`Found ${pageResults.length} provider(s) on results page`);
+        result.providers = pageResults.map(p => ({
+          name: normalizeText(p.name),
+          specialty: normalizeText(p.specialty),
+          location: normalizeText(p.location),
+          network: 'Cigna Network'
+        }));
+
+        result.metadata.searchMethod = 'page-scraping';
+        result.success = true;
+
+        // Save success artifacts
+        const artifactDir = ensureArtifactsDir();
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const basePath = path.join(artifactDir, `cigna-${npiStr}-${timestamp}`);
+
+        try {
+          await page.screenshot({ path: `${basePath}.png`, fullPage: true });
+          result.screenshotPath = `${basePath}.png`;
+        } catch (err) {
+          result.metadata.screenshotError = err.message;
+        }
+
+        result.metadata.durationMs = Date.now() - start;
+        return result;
+      }
+
       // Save debug artifacts
       const artifactDir = ensureArtifactsDir();
       const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -211,7 +317,7 @@ async function searchCignaProvider(npi, options = {}) {
       const html = await page.content();
       fs.writeFileSync(`${basePath}.html`, html, 'utf8');
 
-      throw new Error('No provider results found. Debug artifacts saved.');
+      throw new Error('No provider results found in dropdown or on page. Debug artifacts saved. The provider may not be in the Cigna network for this location.');
     }
 
     console.log(`Found ${resultLinkTexts.length} provider(s) matching ${providerInfo.lastName}`);
@@ -277,6 +383,7 @@ async function searchCignaProvider(npi, options = {}) {
     result.metadata.totalResults = providers.length;
     result.metadata.filteredResults = filteredProviders.length;
     result.metadata.filterApplied = matchingProviders.length > 0;
+    result.metadata.searchMethod = 'dropdown';
 
     // Save success artifacts
     const artifactDir = ensureArtifactsDir();

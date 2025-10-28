@@ -103,8 +103,17 @@ async function searchAmbetterProvider(npi, options = {}) {
     await page.waitForTimeout(4000);
 
     // Step 4: Select first medical plan (HMO/PPO, not PDP)
-    const selectedPlanName = await page.evaluate(() => {
+    const planSelectionResult = await page.evaluate(() => {
       const inputs = Array.from(document.querySelectorAll('input[name="plan_choices"]'));
+      const allPlans = [];
+
+      // Collect all available plans
+      for (const input of inputs) {
+        const label = input.closest('label');
+        if (label) {
+          allPlans.push(label.textContent.trim());
+        }
+      }
 
       // Filter for medical plans (exclude PDP which are pharmacy-only)
       for (const input of inputs) {
@@ -121,7 +130,7 @@ async function searchAmbetterProvider(npi, options = {}) {
             text.includes('HMO-') || text.includes('PPO-') ||
             (!text.includes('PDP') && !text.includes('PRESCRIPTION'))) {
           input.click();
-          return label.textContent.trim();
+          return { success: true, planName: label.textContent.trim(), allPlans };
         }
       }
 
@@ -132,18 +141,21 @@ async function searchAmbetterProvider(npi, options = {}) {
         const text = label.textContent.trim().toUpperCase();
         if (!text.includes('(PDP)')) {
           input.click();
-          return label.textContent.trim();
+          return { success: true, planName: label.textContent.trim(), allPlans };
         }
       }
 
-      return null;
+      return { success: false, planName: null, allPlans };
     });
 
-    if (!selectedPlanName) {
-      throw new Error('No medical plan found (all plans appear to be PDP/pharmacy-only)');
+    if (!planSelectionResult.success) {
+      const planList = planSelectionResult.allPlans.length > 0
+        ? `Available plans: ${planSelectionResult.allPlans.join(', ')}`
+        : 'No plans available';
+      throw new Error(`No medical plan found. Only pharmacy/prescription drug plans (PDP) are available for this location. ${planList}. Try a different location or select a PDP plan manually.`);
     }
 
-    result.plan = selectedPlanName;
+    result.plan = planSelectionResult.planName;
     await page.waitForTimeout(1000);
 
     // Step 5: Continue to search page

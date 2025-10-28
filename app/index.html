@@ -1432,8 +1432,11 @@
                     try {
                         bundle = await fetcher(buildUrlFn(nextPath));
                     } catch (error) {
-                        console.warn('Failed to fetch UHC plan directory page:', error);
-                        return null;
+                        // Only log unexpected errors
+                        if (!error.message?.includes('pagination limit')) {
+                            console.warn('Failed to fetch UHC plan directory page:', error);
+                        }
+                        break;
                     }
 
                     if (!bundle || bundle.resourceType === 'OperationOutcome') {
@@ -4607,11 +4610,31 @@
                 const data = JSON.parse(responseText);
                 console.log('Aetna Parsed Data:', data);
 
-                if (!data.entry || data.entry.length === 0) {
+                // Check if response contains only OperationOutcome (no actual results)
+                const hasOnlyOperationOutcome = data.entry && data.entry.length > 0 &&
+                    data.entry.every(e => e.resource?.resourceType === 'OperationOutcome');
+
+                if (!data.entry || data.entry.length === 0 || hasOnlyOperationOutcome || data.total === 0) {
+                    // Check if there's an OperationOutcome with error severity
+                    const operationOutcome = data.entry?.find?.(e => e.resource?.resourceType === 'OperationOutcome')?.resource;
+                    if (operationOutcome?.issue?.some?.(i => i.severity === 'error')) {
+                        const errorMessage = operationOutcome.issue
+                            .filter(i => i.severity === 'error')
+                            .map(i => i.diagnostics || i.details?.text || 'Unknown error')
+                            .join('; ');
+                        return {
+                            payer: 'Aetna',
+                            status: 'error',
+                            message: `Aetna API error: ${errorMessage}`,
+                            plans: []
+                        };
+                    }
+
+                    // No results found (provider not in network)
                     return {
                         payer: 'Aetna',
                         status: 'not_found',
-                        message: 'Provider not found in Aetna network',
+                        message: 'Provider not found in Aetna provider directory. This provider may not be in-network with Aetna, or may only be available in specific plans.',
                         plans: []
                     };
                 }
@@ -5354,6 +5377,11 @@
                     });
                     const text = await response.text();
                     if (!response.ok) {
+                        // Don't log 400 errors from pagination as errors (expected)
+                        if (response.status === 400 && url.includes('_getpages')) {
+                            console.log('UHC pagination limit reached (this is normal)');
+                            return null;
+                        }
                         console.error('UHC error response:', text);
                         throw new Error(`UHC API returned ${response.status}`);
                     }
