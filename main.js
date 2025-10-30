@@ -293,20 +293,15 @@ function setupAutoUpdater() {
                 console.log('[AUTO-UPDATE] User chose to restart now');
                 console.log('[AUTO-UPDATE] Calling quitAndInstall...');
 
-                try {
-                    // Close all windows first
-                    BrowserWindow.getAllWindows().forEach(win => {
-                        if (!win.isDestroyed()) {
-                            win.close();
-                        }
-                    });
-
-                    // Quit and install with proper parameters
-                    // isSilent=true, isForceRunAfter=true
-                    autoUpdater.quitAndInstall(true, true);
-                } catch (err) {
-                    console.error('[AUTO-UPDATE] Error during quitAndInstall:', err);
-                }
+                // Use setImmediate to ensure dialog closes before quitting
+                setImmediate(() => {
+                    try {
+                        // isSilent=false (show normal behavior), isForceRunAfter=true (restart)
+                        autoUpdater.quitAndInstall(false, true);
+                    } catch (err) {
+                        console.error('[AUTO-UPDATE] Error during quitAndInstall:', err);
+                    }
+                });
             } else {
                 console.log('[AUTO-UPDATE] User chose to restart later');
             }

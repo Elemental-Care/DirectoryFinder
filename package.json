@@ -1,6 +1,6 @@
 {
   "name": "provider-directory-desktop",
-  "version": "1.0.16",
+  "version": "1.0.17",
   "description": "Provider Network Finder - Search healthcare providers by NPI across multiple insurance directories",
   "main": "main.js",
   "scripts": {
