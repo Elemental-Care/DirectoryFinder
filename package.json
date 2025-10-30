@@ -1,6 +1,6 @@
 {
   "name": "provider-directory-desktop",
-  "version": "1.0.15",
+  "version": "1.0.16",
   "description": "Provider Network Finder - Search healthcare providers by NPI across multiple insurance directories",
   "main": "main.js",
   "scripts": {
@@ -76,11 +76,9 @@
       "gatekeeperAssess": false,
       "entitlements": "build/entitlements.mac.plist",
       "entitlementsInherit": "build/entitlements.mac.plist",
-      "identity": "Developer ID Application: Elemental Care - Health & Wellness Center, LLC (2CPRY77SMJ)",
+      "identity": "Elemental Care - Health & Wellness Center, LLC (2CPRY77SMJ)",
       "type": "distribution",
-      "notarize": {
-        "teamId": "2CPRY77SMJ"
-      }
+      "notarize": false
     },
     "win": {
       "target": {

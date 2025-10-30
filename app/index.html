@@ -1295,23 +1295,6 @@
                     </small>
                 </div>
             </div>
-            <div class="settings-section">
-                <div class="config-title">CareFirst Subscription Key (Optional)</div>
-                <p style="font-size: 13px; color: #555; margin-bottom: 10px;">
-                    Supply a CareFirst subscription key only if your account requires it. Leave blank for public access.
-                </p>
-                <div class="compact-row">
-                    <div class="field-block" style="min-width: 260px;">
-                        <label for="carefirstKeyInput">Subscription Key</label>
-                        <input type="text" id="carefirstKeyInput" autocomplete="off" placeholder="Enter subscription key">
-                    </div>
-                </div>
-                <div class="compact-row" style="margin-top: 10px;">
-                    <button type="button" onclick="saveCareFirstKey()">Set CareFirst Key</button>
-                    <button type="button" class="button-secondary" onclick="clearCareFirstKey()">Clear</button>
-                </div>
-                <div id="carefirstKeyStatus" style="font-size: 13px; color: #666; margin-top: 8px;">CareFirst subscription key optional; none set.</div>
-            </div>
         </div>
     </div>
 
@@ -1327,7 +1310,6 @@
         const CAREFIRST_PROXY_BASE = proxyBases?.carefirst || null;
         let currentNppesResults = [];
         let centeneCredentials = null;
-        let carefirstSubscriptionKey = null;
 
         // Configuration
         const API_CONFIG = {
@@ -1605,68 +1587,6 @@
             }
         }
 
-        function updateCareFirstStatus(message, isError = false) {
-            const statusEl = document.getElementById('carefirstKeyStatus');
-            if (!statusEl) return;
-            statusEl.textContent = message;
-            statusEl.style.color = isError ? '#c62828' : '#666';
-        }
-
-        function loadCareFirstKey() {
-            try {
-                const stored = localStorage.getItem('carefirst_subscription_key');
-                const input = document.getElementById('carefirstKeyInput');
-                if (!stored) {
-                    carefirstSubscriptionKey = null;
-                    if (input) input.value = '';
-                    updateCareFirstStatus('CareFirst subscription key optional; none set.');
-                    return;
-                }
-                carefirstSubscriptionKey = stored;
-                if (input) input.value = stored;
-                updateCareFirstStatus('CareFirst subscription key loaded.');
-            } catch (error) {
-                console.warn('Failed to load CareFirst subscription key:', error);
-                updateCareFirstStatus('Unable to load optional CareFirst key.', true);
-            }
-        }
-
-        function persistCareFirstKey() {
-            if (!carefirstSubscriptionKey) {
-                localStorage.removeItem('carefirst_subscription_key');
-                return;
-            }
-            try {
-                localStorage.setItem('carefirst_subscription_key', carefirstSubscriptionKey);
-            } catch (error) {
-                console.warn('Failed to persist CareFirst subscription key:', error);
-                updateCareFirstStatus('Unable to save CareFirst key.', true);
-            }
-        }
-
-        function saveCareFirstKey() {
-            const input = document.getElementById('carefirstKeyInput');
-            const value = input?.value.trim();
-            if (!value) {
-                updateCareFirstStatus('CareFirst subscription key required to save.', true);
-                return;
-            }
-            carefirstSubscriptionKey = value;
-            persistCareFirstKey();
-            updateCareFirstStatus('CareFirst subscription key saved.');
-        }
-
-        function clearCareFirstKey() {
-            carefirstSubscriptionKey = null;
-            localStorage.removeItem('carefirst_subscription_key');
-            const input = document.getElementById('carefirstKeyInput');
-            if (input) input.value = '';
-            updateCareFirstStatus('CareFirst subscription key optional; cleared.');
-        }
-
-        function getCareFirstSubscriptionKey() {
-            return carefirstSubscriptionKey;
-        }
 
         const CENTENE_PLAN_LOOKUP = {
             'Illinois': {
@@ -2293,7 +2213,6 @@
             updateAetnaStatus();
             updateSearchMode();
             loadCenteneCredentials();
-            loadCareFirstKey();
             initializeCenteneFilters();
             initializePayerSelection();
             const openSettingsBtn = document.getElementById('openSettings');
